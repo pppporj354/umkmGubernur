@@ -1,0 +1,3700 @@
+openapi: 3.0.3
+info:
+  title: API UMKM Bundaran Kantor Gubernur Sulawesi Tenggara
+  version: 1.0.0
+  description:
+    Spesifikasi OpenAPI untuk aplikasi marketplace UMKM yang berlokasi di sekitar
+    Bundaran Kantor Gubernur Sulawesi Tenggara (Kendari), mendukung pembuatan kios virtual
+    oleh penjual, katalog produk, keranjang, checkout, pembayaran, pengiriman, ulasan, dan
+    administrasi. Seluruh mata uang default IDR dan zona waktu Asia/Makassar (UTC+8).
+  contact:
+    name: Tim Pengembang UMKM Sultra
+    email: dev@umkm-sultra.example.id
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.umkm-sultra.example.id/v1
+    description: Produksi
+  - url: https://staging.api.umkm-sultra.example.id/v1
+    description: Staging
+  - url: http://localhost:8080/v1
+    description: Lokal
+
+tags:
+  - name: Auth
+    description: Autentikasi dan manajemen sesi pengguna.
+  - name: Pengguna
+    description: Profil pengguna dan pengelolaan peran (admin).
+  - name: Penjual
+    description: Pendaftaran/upgrade penjual, profil toko/kios, metrik penjual.
+  - name: Kategori
+    description: Manajemen kategori produk.
+  - name: Produk
+    description: Katalog produk, inventori, media, dan pencarian.
+  - name: Keranjang & Wishlist
+    description: Keranjang belanja dan daftar keinginan.
+  - name: Checkout & Pembayaran
+    description: Alur checkout, pembayaran, dan webhook pembayaran.
+  - name: Pesanan
+    description: Manajemen pesanan pembeli, penjual, dan admin.
+  - name: Alamat & Pengiriman
+    description: Alamat pengguna dan informasi pengiriman.
+  - name: Ulasan
+    description: Ulasan dan rating produk/pesanan.
+  - name: Notifikasi
+    description: Notifikasi dalam aplikasi dan statusnya.
+  - name: Admin
+    description: Operasi administratif dan moderasi.
+  - name: Komunikasi
+    description: Chat, pesan, dan Q&A antara pembeli dan penjual.
+  - name: Promosi & Kupon
+    description: Sistem kupon, diskon, dan program loyalitas.
+  - name: Analitik & Laporan
+    description: Laporan penjualan, analitik, dan metrik bisnis.
+  - name: Pencarian & Rekomendasi
+    description: Pencarian lanjutan, rekomendasi produk, dan discovery.
+  - name: Media & File
+    description: Pengelolaan file, gambar, video, dan media lainnya.
+  - name: Verifikasi & Keamanan
+    description: Verifikasi akun, 2FA, dan fitur keamanan.
+  - name: Dispute & Return
+    description: Penyelesaian sengketa, retur, dan refund.
+
+security:
+  - bearerAuth: []
+
+x-rateLimit:
+  limitHeader: X-RateLimit-Limit
+  remainingHeader: X-RateLimit-Remaining
+  resetHeader: X-RateLimit-Reset
+
+paths:
+  /health:
+    get:
+      summary: Cek kesehatan layanan
+      description: Endpoint kesehatan untuk monitoring.
+      tags: [Admin]
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /health/detailed:
+    get:
+      summary: Health check detail
+      description: Detailed health check termasuk status database, redis, dan layanan eksternal.
+      tags: [Admin]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Status layanan detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [healthy, degraded, unhealthy] }
+                  timestamp: { type: string, format: date-time }
+                  services:
+                    type: object
+                    properties:
+                      database:
+                        type: object
+                        properties:
+                          status: { type: string, enum: [up, down] }
+                          responseTime: { type: number }
+                      redis:
+                        type: object
+                        properties:
+                          status: { type: string, enum: [up, down] }
+                          responseTime: { type: number }
+                      paymentGateway:
+                        type: object
+                        properties:
+                          status: { type: string, enum: [up, down] }
+                          responseTime: { type: number }
+                      fileStorage:
+                        type: object
+                        properties:
+                          status: { type: string, enum: [up, down] }
+                          responseTime: { type: number }
+
+  /metrics/system:
+    get:
+      summary: System metrics
+      description: Metrik sistem untuk monitoring (hanya untuk admin).
+      tags: [Admin]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Metrik sistem
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp: { type: string, format: date-time }
+                  api:
+                    type: object
+                    properties:
+                      requestsPerMinute: { type: number }
+                      averageResponseTime: { type: number }
+                      errorRate: { type: number }
+                  database:
+                    type: object
+                    properties:
+                      connections: { type: integer }
+                      queryTime: { type: number }
+                  memory:
+                    type: object
+                    properties:
+                      used: { type: integer }
+                      total: { type: integer }
+                      percentage: { type: number }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrasi akun baru
+      description: Registrasi pembeli atau pembuatan akun dasar untuk upgrade ke penjual.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+            examples:
+              pembeli:
+                value:
+                  fullName: "Ayu Lestari"
+                  email: "ayu@example.com"
+                  password: "S3cureP@ss!"
+                  role: "buyer"
+              calonPenjual:
+                value:
+                  fullName: "Budi Santoso"
+                  email: "budi@example.com"
+                  password: "S3cureP@ss!"
+                  role: "buyer"
+      responses:
+        "201":
+          description: Akun berhasil dibuat
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Masuk
+      description: Autentikasi dengan email/password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Token diterbitkan
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh token akses
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200":
+          description: Token diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Keluar
+      responses:
+        "204":
+          description: Logout berhasil
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Lupa kata sandi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ForgotPasswordRequest" }
+      responses:
+        "204":
+          description: Tautan reset dikirim bila email valid
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset kata sandi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetPasswordRequest" }
+      responses:
+        "204":
+          description: Kata sandi diubah
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /auth/preferences:
+    get:
+      tags: [Auth]
+      summary: Preferensi pengguna
+      responses:
+        "200":
+          description: Preferensi pengguna
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  language: { type: string }
+                  timezone: { type: string }
+                  notifications: { type: boolean }
+                  marketing: { type: boolean }
+                  theme: { type: string, enum: [light, dark, auto] }
+    patch:
+      tags: [Auth]
+      summary: Update preferensi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                language: { type: string, enum: [id, en] }
+                timezone: { type: string }
+                notifications: { type: boolean }
+                marketing: { type: boolean }
+                theme: { type: string, enum: [light, dark, auto] }
+      responses:
+        "200":
+          description: Preferensi diperbarui
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Profil diri
+      responses:
+        "200":
+          description: Profil pengguna saat ini
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Auth]
+      summary: Perbarui profil diri
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProfileRequest" }
+      responses:
+        "200":
+          description: Profil diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/users:
+    get:
+      tags: [Pengguna, Admin]
+      summary: Daftar pengguna
+      description: Admin melihat daftar pengguna dengan filter dan pagination.
+      x-roles: [admin]
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+        - $ref: "#/components/parameters/sort"
+        - name: role
+          in: query
+          description: Filter peran
+          schema:
+            type: string
+            enum: [admin, seller, buyer]
+        - name: q
+          in: query
+          description: Pencarian nama/email
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Daftar pengguna
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedUsers" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /admin/users/{userId}:
+    get:
+      tags: [Pengguna, Admin]
+      summary: Detail pengguna
+      x-roles: [admin]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Detail pengguna
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Pengguna, Admin]
+      summary: Ubah atribut pengguna
+      x-roles: [admin]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminUpdateUserRequest" }
+      responses:
+        "200":
+          description: Pengguna diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Pengguna, Admin]
+      summary: Hapus pengguna
+      x-roles: [admin]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "204":
+          description: Dihapus
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/users/{userId}/roles:
+    post:
+      tags: [Pengguna, Admin]
+      summary: Setel peran pengguna
+      x-roles: [admin]
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetRolesRequest" }
+      responses:
+        "200":
+          description: Peran diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /auth/verify-email:
+    post:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Verifikasi email
+      description: Verifikasi alamat email menggunakan token yang dikirim ke email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: Token verifikasi dari email
+      responses:
+        "200":
+          description: Email berhasil diverifikasi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Email berhasil diverifikasi"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /auth/resend-verification:
+    post:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Kirim ulang verifikasi email
+      responses:
+        "204":
+          description: Email verifikasi dikirim ulang
+        "429":
+          description: Terlalu banyak permintaan
+
+  /auth/2fa/enable:
+    post:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Aktifkan 2FA
+      description: Generate QR code dan secret untuk setup 2FA.
+      responses:
+        "200":
+          description: Setup 2FA berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qrCode:
+                    type: string
+                    format: uri
+                    description: QR code untuk setup authenticator app
+                  secret:
+                    type: string
+                    description: Secret key untuk manual setup
+                  backupCodes:
+                    type: array
+                    items:
+                      type: string
+                    description: Kode backup untuk akses darurat
+
+  /auth/2fa/confirm:
+    post:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Konfirmasi aktivasi 2FA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: 6-digit kode dari authenticator app
+      responses:
+        "200":
+          description: 2FA berhasil diaktifkan
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /auth/2fa/disable:
+    post:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Nonaktifkan 2FA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                code:
+                  type: string
+                  description: 6-digit kode dari authenticator app (jika masih aktif)
+      responses:
+        "200":
+          description: 2FA berhasil dinonaktifkan
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /auth/sessions:
+    get:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Daftar sesi aktif
+      responses:
+        "200":
+          description: Daftar sesi aktif
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSession"
+    delete:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Logout dari semua perangkat
+      responses:
+        "204":
+          description: Semua sesi dihapus
+
+  /auth/sessions/{sessionId}:
+    delete:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Logout dari perangkat tertentu
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Sesi dihapus
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /auth/change-password:
+    post:
+      tags: [Auth, Verifikasi & Keamanan]
+      summary: Ubah password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 8
+      responses:
+        "204":
+          description: Password berhasil diubah
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "200":
+          description: Peran diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /seller/upgrade:
+    post:
+      tags: [Penjual]
+      summary: Upgrade menjadi penjual
+      description: Mengajukan upgrade peran menjadi penjual. Dapat memerlukan verifikasi admin.
+      responses:
+        "202":
+          description: Pengajuan diterima
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SellerApplication" }
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /seller/profile:
+    get:
+      tags: [Penjual]
+      summary: Profil penjual
+      responses:
+        "200":
+          description: Profil penjual
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SellerProfile" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    patch:
+      tags: [Penjual]
+      summary: Perbarui profil penjual
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSellerProfileRequest" }
+      responses:
+        "200":
+          description: Profil penjual diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SellerProfile" }
+
+  /seller/stores:
+    post:
+      tags: [Penjual]
+      summary: Buat toko/kios
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateStoreRequest" }
+      responses:
+        "201":
+          description: Toko dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Store" }
+    get:
+      tags: [Penjual]
+      summary: Daftar toko milik penjual
+      responses:
+        "200":
+          description: Daftar toko
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Store" }
+
+  /seller/stores/{storeId}:
+    parameters:
+      - $ref: "#/components/parameters/storeId"
+    get:
+      tags: [Penjual]
+      summary: Detail toko
+      responses:
+        "200":
+          description: Detail toko
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Store" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Penjual]
+      summary: Perbarui toko
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateStoreRequest" }
+      responses:
+        "200":
+          description: Toko diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Store" }
+    delete:
+      tags: [Penjual]
+      summary: Hapus toko
+      responses:
+        "204":
+          description: Dihapus
+
+  /categories:
+    get:
+      tags: [Kategori]
+      summary: Daftar kategori publik
+      parameters:
+        - name: parentId
+          in: query
+          schema: { type: string, format: uuid, nullable: true }
+          description: Filter anak kategori dari parentId
+      responses:
+        "200":
+          description: Daftar kategori
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Category" }
+
+  /admin/categories:
+    post:
+      tags: [Kategori, Admin]
+      summary: Buat kategori
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCategoryRequest" }
+      responses:
+        "201":
+          description: Kategori dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+    get:
+      tags: [Kategori, Admin]
+      summary: Daftar kategori (admin)
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Daftar kategori
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Category" }
+
+  /admin/categories/{categoryId}:
+    parameters:
+      - $ref: "#/components/parameters/categoryId"
+    patch:
+      tags: [Kategori, Admin]
+      summary: Ubah kategori
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCategoryRequest" }
+      responses:
+        "200":
+          description: Kategori diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+    delete:
+      tags: [Kategori, Admin]
+      summary: Hapus kategori
+      x-roles: [admin]
+      responses:
+        "204":
+          description: Dihapus
+
+  /products:
+    get:
+      tags: [Produk]
+      summary: Telusuri produk
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+        - $ref: "#/components/parameters/sort"
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Kata kunci pencarian
+        - name: categoryId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: storeId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: priceMin
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: priceMax
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: inStock
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Daftar produk
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedProducts" }
+
+  /products/{productId}:
+    parameters:
+      - $ref: "#/components/parameters/productId"
+    get:
+      tags: [Produk]
+      summary: Detail produk
+      responses:
+        "200":
+          description: Detail produk
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /seller/stores/{storeId}/products:
+    parameters:
+      - $ref: "#/components/parameters/storeId"
+    post:
+      tags: [Produk, Penjual]
+      summary: Buat produk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProductRequest" }
+      responses:
+        "201":
+          description: Produk dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+    get:
+      tags: [Produk, Penjual]
+      summary: Daftar produk milik toko
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Daftar produk toko
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedProducts" }
+
+  /seller/products/{productId}:
+    parameters:
+      - $ref: "#/components/parameters/productId"
+    patch:
+      tags: [Produk, Penjual]
+      summary: Ubah produk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProductRequest" }
+      responses:
+        "200":
+          description: Produk diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+    delete:
+      tags: [Produk, Penjual]
+      summary: Hapus produk
+      responses:
+        "204":
+          description: Dihapus
+
+  /seller/products/{productId}/inventory:
+    parameters:
+      - $ref: "#/components/parameters/productId"
+    patch:
+      tags: [Produk, Penjual]
+      summary: Perbarui stok & SKU/varian
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateInventoryRequest" }
+      responses:
+        "200":
+          description: Inventori diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+
+  /seller/products/{productId}/images:
+    parameters:
+      - $ref: "#/components/parameters/productId"
+    post:
+      tags: [Produk, Penjual]
+      summary: Unggah gambar produk
+      description: >
+        Dukung dua metode: multipart upload langsung atau minta URL ter-tandatangani (pre-signed).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+          application/json:
+            schema:
+              type: object
+              properties:
+                uploadStrategy:
+                  type: string
+                  enum: [presigned]
+                contentType:
+                  type: string
+      responses:
+        "201":
+          description: Gambar ditambahkan atau URL unggah dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadResult" }
+
+  /cart:
+    get:
+      tags: [Keranjang & Wishlist]
+      summary: Lihat keranjang aktif
+      responses:
+        "200":
+          description: Keranjang aktif
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+    put:
+      tags: [Keranjang & Wishlist]
+      summary: Gantikan isi keranjang
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CartUpdateRequest" }
+      responses:
+        "200":
+          description: Keranjang diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+
+  /cart/items:
+    post:
+      tags: [Keranjang & Wishlist]
+      summary: Tambah item ke keranjang
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddCartItemRequest" }
+      responses:
+        "201":
+          description: Item ditambahkan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+
+  /cart/items/{cartItemId}:
+    parameters:
+      - $ref: "#/components/parameters/cartItemId"
+    patch:
+      tags: [Keranjang & Wishlist]
+      summary: Ubah jumlah/varian item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCartItemRequest" }
+      responses:
+        "200":
+          description: Item diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+    delete:
+      tags: [Keranjang & Wishlist]
+      summary: Hapus item dari keranjang
+      responses:
+        "200":
+          description: Item dihapus
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+
+  /wishlist:
+    get:
+      tags: [Keranjang & Wishlist]
+      summary: Daftar keinginan
+      responses:
+        "200":
+          description: Produk favorit
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Product" }
+    post:
+      tags: [Keranjang & Wishlist]
+      summary: Tambah ke wishlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId:
+                  type: string
+                  format: uuid
+      responses:
+        "201":
+          description: Ditambahkan
+    delete:
+      tags: [Keranjang & Wishlist]
+      summary: Hapus dari wishlist
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Dihapus
+
+  /addresses:
+    get:
+      tags: [Alamat & Pengiriman]
+      summary: Daftar alamat pengguna
+      responses:
+        "200":
+          description: Alamat pengguna
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Address" }
+    post:
+      tags: [Alamat & Pengiriman]
+      summary: Tambah alamat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddressCreateRequest" }
+      responses:
+        "201":
+          description: Alamat dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Address" }
+
+  /addresses/{addressId}:
+    parameters:
+      - $ref: "#/components/parameters/addressId"
+    patch:
+      tags: [Alamat & Pengiriman]
+      summary: Ubah alamat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddressUpdateRequest" }
+      responses:
+        "200":
+          description: Alamat diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Address" }
+    delete:
+      tags: [Alamat & Pengiriman]
+      summary: Hapus alamat
+      responses:
+        "204":
+          description: Dihapus
+
+  # === DELIVERY ZONES & SHIPPING ===
+  /shipping/zones:
+    get:
+      tags: [Alamat & Pengiriman]
+      summary: Daftar zona pengiriman
+      security: []
+      parameters:
+        - name: storeId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: address
+          in: query
+          schema: { type: string }
+          description: Alamat untuk cek zona pengiriman
+      responses:
+        "200":
+          description: Zona pengiriman tersedia
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DeliveryZone" }
+
+  /shipping/calculate:
+    post:
+      tags: [Alamat & Pengiriman]
+      summary: Hitung ongkir
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromAddress, toAddress, items]
+              properties:
+                fromAddress:
+                  type: object
+                  properties:
+                    city: { type: string }
+                    district: { type: string }
+                    postalCode: { type: string }
+                toAddress: { $ref: "#/components/schemas/Address" }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      weight: { type: number }
+                      dimensions:
+                        type: object
+                        properties:
+                          length: { type: number }
+                          width: { type: number }
+                          height: { type: number }
+                      value: { $ref: "#/components/schemas/Money" }
+      responses:
+        "200":
+          description: Pilihan pengiriman
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShippingOption" }
+
+  /seller/delivery-zones:
+    get:
+      tags: [Alamat & Pengiriman, Penjual]
+      summary: Zona pengiriman toko
+      responses:
+        "200":
+          description: Zona pengiriman toko
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DeliveryZone" }
+    post:
+      tags: [Alamat & Pengiriman, Penjual]
+      summary: Tambah zona pengiriman
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeliveryZoneRequest" }
+      responses:
+        "201":
+          description: Zona pengiriman ditambahkan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryZone" }
+
+  /seller/delivery-zones/{zoneId}:
+    patch:
+      tags: [Alamat & Pengiriman, Penjual]
+      summary: Update zona pengiriman
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                isActive: { type: boolean }
+                shippingCost: { $ref: "#/components/schemas/Money" }
+                freeShippingMinOrder: { $ref: "#/components/schemas/Money" }
+      responses:
+        "200":
+          description: Zona pengiriman diupdate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryZone" }
+    delete:
+      tags: [Alamat & Pengiriman, Penjual]
+      summary: Hapus zona pengiriman
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Zona pengiriman dihapus
+
+  /checkout:
+    post:
+      tags: [Checkout & Pembayaran]
+      summary: Mulai checkout
+      description: Membuat intent pesanan dari keranjang aktif.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckoutRequest" }
+      responses:
+        "201":
+          description: Pesanan dibuat (pending pembayaran)
+          headers:
+            Idempotency-Key: { $ref: "#/components/headers/Idempotency-Key" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /payments/intents:
+    post:
+      tags: [Checkout & Pembayaran]
+      summary: Buat intent pembayaran
+      description: Menghasilkan kredensial/QR/virtual account untuk pembayaran.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentIntentRequest" }
+      responses:
+        "201":
+          description: Intent dibuat
+          headers:
+            Idempotency-Key: { $ref: "#/components/headers/Idempotency-Key" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentIntent" }
+
+  /orders:
+    get:
+      tags: [Pesanan]
+      summary: Daftar pesanan (pembeli)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+      responses:
+        "200":
+          description: Daftar pesanan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedOrders" }
+
+  /orders/{orderId}:
+    parameters:
+      - $ref: "#/components/parameters/orderId"
+    get:
+      tags: [Pesanan]
+      summary: Detail pesanan (pembeli)
+      responses:
+        "200":
+          description: Detail pesanan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Pesanan]
+      summary: Tindakan pada pesanan
+      description: Batalkan (buyer), konfirmasi (seller/admin), dsb.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrderActionRequest" }
+      responses:
+        "200":
+          description: Pesanan diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+
+  /seller/orders:
+    get:
+      tags: [Pesanan, Penjual]
+      summary: Daftar pesanan ke toko penjual
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+      responses:
+        "200":
+          description: Daftar pesanan toko
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedOrders" }
+
+  /seller/orders/{orderId}/fulfill:
+    parameters:
+      - $ref: "#/components/parameters/orderId"
+    post:
+      tags: [Pesanan, Penjual]
+      summary: Proses & kirim pesanan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FulfillOrderRequest" }
+      responses:
+        "200":
+          description: Status pengiriman diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+
+  /products/{productId}/reviews:
+    parameters:
+      - $ref: "#/components/parameters/productId"
+    get:
+      tags: [Ulasan]
+      summary: Daftar ulasan produk
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Ulasan produk
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedReviews" }
+    post:
+      tags: [Ulasan]
+      summary: Tambahkan ulasan (pembeli)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReviewRequest" }
+      responses:
+        "201":
+          description: Ulasan dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+
+  /notifications:
+    get:
+      tags: [Notifikasi]
+      summary: Daftar notifikasi
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Notifikasi
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedNotifications" }
+
+  /notifications/{notificationId}:
+    parameters:
+      - $ref: "#/components/parameters/notificationId"
+    patch:
+      tags: [Notifikasi]
+      summary: Tandai notifikasi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                read:
+                  type: boolean
+      responses:
+        "200":
+          description: Diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+
+  /admin/metrics:
+    get:
+      tags: [Admin]
+      summary: Metrik platform (admin)
+      x-roles: [admin]
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Ringkasan metrik
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminMetrics" }
+
+  /seller/metrics:
+    get:
+      tags: [Penjual]
+      summary: Metrik toko penjual
+      parameters:
+        - name: storeId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Ringkasan metrik toko
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SellerMetrics" }
+
+  # === COMMUNICATION ENDPOINTS ===
+  /messages:
+    get:
+      tags: [Komunikasi]
+      summary: Daftar percakapan
+      description: Melihat daftar percakapan aktif dengan penjual atau pembeli.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Daftar percakapan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Conversation" }
+                  meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+  /messages/conversations/{conversationId}:
+    get:
+      tags: [Komunikasi]
+      summary: Detail percakapan
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Pesan dalam percakapan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation: { $ref: "#/components/schemas/Conversation" }
+                  messages:
+                    type: array
+                    items: { $ref: "#/components/schemas/Message" }
+                  meta: { $ref: "#/components/schemas/PaginationMeta" }
+    post:
+      tags: [Komunikasi]
+      summary: Kirim pesan
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  maxLength: 1000
+                attachments:
+                  type: array
+                  items:
+                    type: string
+                    format: uri
+      responses:
+        "201":
+          description: Pesan terkirim
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Message" }
+
+  /messages/start:
+    post:
+      tags: [Komunikasi]
+      summary: Mulai percakapan baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipientId, content]
+              properties:
+                recipientId:
+                  type: string
+                  format: uuid
+                  description: ID penjual atau pembeli yang akan dihubungi
+                content:
+                  type: string
+                  maxLength: 1000
+                productId:
+                  type: string
+                  format: uuid
+                  description: ID produk terkait (opsional)
+      responses:
+        "201":
+          description: Percakapan dimulai
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+
+  # === COUPONS & PROMOTIONS ===
+  /coupons:
+    get:
+      tags: [Promosi & Kupon]
+      summary: Daftar kupon tersedia
+      parameters:
+        - name: storeId
+          in: query
+          schema: { type: string, format: uuid }
+          description: Filter kupon dari toko tertentu
+        - name: applicable
+          in: query
+          schema: { type: boolean, default: true }
+          description: Hanya kupon yang bisa digunakan pembeli saat ini
+      responses:
+        "200":
+          description: Daftar kupon
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Coupon" }
+
+  /coupons/validate:
+    post:
+      tags: [Promosi & Kupon]
+      summary: Validasi kode kupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: Kode kupon
+                cartTotal:
+                  $ref: "#/components/schemas/Money"
+                storeId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Kupon valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  coupon: { $ref: "#/components/schemas/Coupon" }
+                  discount: { $ref: "#/components/schemas/Money" }
+        "400":
+          description: Kupon tidak valid
+
+  /seller/coupons:
+    get:
+      tags: [Promosi & Kupon, Penjual]
+      summary: Daftar kupon toko
+      responses:
+        "200":
+          description: Kupon milik penjual
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Coupon" }
+    post:
+      tags: [Promosi & Kupon, Penjual]
+      summary: Buat kupon baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCouponRequest" }
+      responses:
+        "201":
+          description: Kupon dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Coupon" }
+
+  /seller/coupons/{couponId}:
+    patch:
+      tags: [Promosi & Kupon, Penjual]
+      summary: Update kupon
+      parameters:
+        - name: couponId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCouponRequest" }
+      responses:
+        "200":
+          description: Kupon diperbarui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Coupon" }
+    delete:
+      tags: [Promosi & Kupon, Penjual]
+      summary: Hapus kupon
+      parameters:
+        - name: couponId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Kupon dihapus
+
+  # === LOYALTY PROGRAM ===
+  /loyalty/points:
+    get:
+      tags: [Promosi & Kupon]
+      summary: Saldo poin loyalitas
+      responses:
+        "200":
+          description: Informasi poin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalPoints: { type: integer }
+                  availablePoints: { type: integer }
+                  tier:
+                    type: string
+                    enum: [bronze, silver, gold, platinum]
+                  nextTierPoints: { type: integer }
+
+  /loyalty/history:
+    get:
+      tags: [Promosi & Kupon]
+      summary: Riwayat poin loyalitas
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Riwayat poin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/PointTransaction" }
+                  meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+  /loyalty/redeem:
+    post:
+      tags: [Promosi & Kupon]
+      summary: Tukar poin dengan kupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rewardId]
+              properties:
+                rewardId:
+                  type: string
+                  format: uuid
+                  description: ID reward yang ingin ditukar
+      responses:
+        "201":
+          description: Poin berhasil ditukar
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  coupon: { $ref: "#/components/schemas/Coupon" }
+                  remainingPoints: { type: integer }
+
+  # === ADVANCED SEARCH & RECOMMENDATIONS ===
+  /search/suggestions:
+    get:
+      tags: [Pencarian & Rekomendasi]
+      summary: Saran pencarian
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+          description: Query pencarian minimal 2 karakter
+      responses:
+        "200":
+          description: Saran pencarian
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+                  categories:
+                    type: array
+                    items: { $ref: "#/components/schemas/Category" }
+                  stores:
+                    type: array
+                    items: { $ref: "#/components/schemas/Store" }
+
+  /products/recommended:
+    get:
+      tags: [Pencarian & Rekomendasi, Produk]
+      summary: Produk rekomendasi
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [trending, personalized, similar, recently_viewed]
+            default: personalized
+        - name: productId
+          in: query
+          schema: { type: string, format: uuid }
+          description: Untuk rekomendasi produk serupa
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Produk rekomendasi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type: { type: string }
+                  products:
+                    type: array
+                    items: { $ref: "#/components/schemas/Product" }
+
+  /products/trending:
+    get:
+      tags: [Pencarian & Rekomendasi, Produk]
+      summary: Produk trending
+      security: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly, monthly]
+            default: weekly
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Produk trending
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Product" }
+
+  /products/compare:
+    post:
+      tags: [Pencarian & Rekomendasi, Produk]
+      summary: Bandingkan produk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productIds]
+              properties:
+                productIds:
+                  type: array
+                  items: { type: string, format: uuid }
+                  minItems: 2
+                  maxItems: 5
+      responses:
+        "200":
+          description: Perbandingan produk
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items: { $ref: "#/components/schemas/Product" }
+                  comparison:
+                    type: object
+                    properties:
+                      priceRange: { $ref: "#/components/schemas/MoneyRange" }
+                      features:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            feature: { type: string }
+                            values:
+                              type: array
+                              items: { type: string }
+
+  # === STORE FOLLOWERS ===
+  /stores/{storeId}/follow:
+    post:
+      tags: [Penjual]
+      summary: Follow toko
+      parameters:
+        - $ref: "#/components/parameters/storeId"
+      responses:
+        "201":
+          description: Berhasil follow toko
+    delete:
+      tags: [Penjual]
+      summary: Unfollow toko
+      parameters:
+        - $ref: "#/components/parameters/storeId"
+      responses:
+        "204":
+          description: Berhasil unfollow toko
+
+  /stores/{storeId}/followers:
+    get:
+      tags: [Penjual]
+      summary: Daftar pengikut toko
+      x-roles: [seller]
+      parameters:
+        - $ref: "#/components/parameters/storeId"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Daftar pengikut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/UserSummary" }
+                  meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+  /following:
+    get:
+      tags: [Penjual]
+      summary: Toko yang diikuti
+      responses:
+        "200":
+          description: Toko yang diikuti pembeli
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Store" }
+
+  # === PRODUCT Q&A ===
+  /products/{productId}/questions:
+    get:
+      tags: [Produk, Komunikasi]
+      summary: Daftar pertanyaan produk
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/productId"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+      responses:
+        "200":
+          description: Pertanyaan dan jawaban
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProductQuestion" }
+                  meta: { $ref: "#/components/schemas/PaginationMeta" }
+    post:
+      tags: [Produk, Komunikasi]
+      summary: Ajukan pertanyaan
+      parameters:
+        - $ref: "#/components/parameters/productId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+                  maxLength: 500
+      responses:
+        "201":
+          description: Pertanyaan berhasil diajukan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductQuestion" }
+
+  /seller/questions/{questionId}/answer:
+    post:
+      tags: [Produk, Penjual, Komunikasi]
+      summary: Jawab pertanyaan produk
+      parameters:
+        - name: questionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answer]
+              properties:
+                answer:
+                  type: string
+                  maxLength: 1000
+      responses:
+        "200":
+          description: Jawaban berhasil dikirim
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductQuestion" }
+
+  # === DISPUTE & RETURN MANAGEMENT ===
+  /orders/{orderId}/disputes:
+    post:
+      tags: [Dispute & Return, Pesanan]
+      summary: Buat pengaduan pesanan
+      parameters:
+        - $ref: "#/components/parameters/orderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDisputeRequest" }
+      responses:
+        "201":
+          description: Pengaduan dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dispute" }
+
+  /disputes:
+    get:
+      tags: [Dispute & Return]
+      summary: Daftar pengaduan
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, in_progress, resolved, closed]
+      responses:
+        "200":
+          description: Daftar pengaduan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Dispute" }
+                  meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+  /disputes/{disputeId}:
+    get:
+      tags: [Dispute & Return]
+      summary: Detail pengaduan
+      parameters:
+        - name: disputeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Detail pengaduan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dispute" }
+
+  /disputes/{disputeId}/messages:
+    post:
+      tags: [Dispute & Return]
+      summary: Kirim pesan dalam pengaduan
+      parameters:
+        - name: disputeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  maxLength: 1000
+                attachments:
+                  type: array
+                  items:
+                    type: string
+                    format: uri
+      responses:
+        "201":
+          description: Pesan terkirim
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DisputeMessage" }
+
+  /orders/{orderId}/return:
+    post:
+      tags: [Dispute & Return, Pesanan]
+      summary: Ajukan pengembalian
+      parameters:
+        - $ref: "#/components/parameters/orderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReturnRequest" }
+      responses:
+        "201":
+          description: Pengembalian diajukan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Return" }
+
+  /returns:
+    get:
+      tags: [Dispute & Return]
+      summary: Daftar pengembalian
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/per_page"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected, completed]
+      responses:
+        "200":
+          description: Daftar pengembalian
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Return" }
+                  meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+  /returns/{returnId}/approve:
+    post:
+      tags: [Dispute & Return, Penjual]
+      summary: Setujui pengembalian
+      x-roles: [seller]
+      parameters:
+        - name: returnId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Pengembalian disetujui
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Return" }
+
+  # === BULK OPERATIONS FOR SELLERS ===
+  /seller/products/bulk:
+    patch:
+      tags: [Produk, Penjual]
+      summary: Update produk secara massal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productIds, updates]
+              properties:
+                productIds:
+                  type: array
+                  items: { type: string, format: uuid }
+                updates:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum: [active, inactive, draft]
+                    categoryId:
+                      type: string
+                      format: uuid
+                    discount:
+                      {
+                        $ref: "#/components/schemas/Product/properties/discount",
+                      }
+      responses:
+        "200":
+          description: Produk berhasil diupdate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: integer }
+                  failed: { type: integer }
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        productId: { type: string, format: uuid }
+                        error: { type: string }
+
+  /seller/orders/bulk:
+    patch:
+      tags: [Pesanan, Penjual]
+      summary: Update pesanan secara massal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderIds, action]
+              properties:
+                orderIds:
+                  type: array
+                  items: { type: string, format: uuid }
+                action:
+                  type: string
+                  enum: [mark_as_shipped, mark_as_processing]
+      responses:
+        "200":
+          description: Pesanan berhasil diupdate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: integer }
+                  failed: { type: integer }
+
+  # === ADVANCED ANALYTICS ===
+  /seller/analytics/sales:
+    get:
+      tags: [Analitik & Laporan, Penjual]
+      summary: Analitik penjualan detail
+      parameters:
+        - name: storeId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        "200":
+          description: Data analitik penjualan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesAnalytics" }
+
+  /seller/analytics/inventory:
+    get:
+      tags: [Analitik & Laporan, Penjual]
+      summary: Analitik inventori
+      parameters:
+        - name: storeId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Analitik inventori
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InventoryAnalytics" }
+
+  /seller/reports/sales:
+    get:
+      tags: [Analitik & Laporan, Penjual]
+      summary: Export laporan penjualan
+      parameters:
+        - name: storeId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, csv, excel]
+            default: json
+      responses:
+        "200":
+          description: Laporan penjualan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesReport" }
+            text/csv:
+              schema: { type: string }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+
+  # === FILE & MEDIA MANAGEMENT ===
+  /media/upload:
+    post:
+      tags: [Media & File]
+      summary: Upload file dengan pre-signed URL
+      description: Generate pre-signed URL untuk upload file ke cloud storage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, contentType, purpose]
+              properties:
+                filename:
+                  type: string
+                contentType:
+                  type: string
+                  enum:
+                    [
+                      image/jpeg,
+                      image/png,
+                      image/webp,
+                      video/mp4,
+                      application/pdf,
+                    ]
+                purpose:
+                  type: string
+                  enum:
+                    [
+                      product_image,
+                      store_logo,
+                      user_avatar,
+                      message_attachment,
+                      document,
+                    ]
+                maxSize:
+                  type: integer
+                  description: Ukuran maksimal dalam bytes
+      responses:
+        "201":
+          description: URL upload berhasil dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadUrl" }
+
+  /media/optimize:
+    post:
+      tags: [Media & File]
+      summary: Optimasi gambar
+      description: Buat varian gambar dengan ukuran berbeda.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageUrl, variants]
+              properties:
+                imageUrl:
+                  type: string
+                  format: uri
+                variants:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string, example: "thumbnail" }
+                      width: { type: integer }
+                      height: { type: integer }
+                      quality: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: Gambar berhasil dioptimasi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  original: { type: string, format: uri }
+                  variants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        url: { type: string, format: uri }
+                        size: { type: integer }
+
+  /webhooks/payment/status-updated:
+    post:
+      summary: Webhook status pembayaran dari penyedia pembayaran
+      description: Validasi dengan apiKey dan signature.
+      tags: [Checkout & Pembayaran]
+      security:
+        - webhookKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentWebhook" }
+      responses:
+        "200":
+          description: Diterima
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Sertakan Authorization: Bearer {token}. Token mengandung klaim peran (admin/seller/buyer).
+    webhookKey:
+      type: apiKey
+      in: header
+      name: X-Webhook-Token
+      description: Kunci untuk memverifikasi sumber webhook.
+  headers:
+    X-Request-Id:
+      description: ID permintaan untuk pelacakan.
+      schema: { type: string }
+    Idempotency-Key:
+      description: Kunci idempoten untuk permintaan yang dapat diulang (mis. pembayaran).
+      schema: { type: string }
+  parameters:
+    page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    per_page:
+      name: per_page
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+    sort:
+      name: sort
+      in: query
+      schema:
+        type: string
+        description: >
+          Format: field[:asc|desc], contoh: createdAt:desc. Beberapa field dipisah koma.
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    storeId:
+      name: storeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    categoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    productId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    cartItemId:
+      name: cartItemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    orderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    addressId:
+      name: addressId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    notificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Unauthorized:
+      description: Tidak diautentikasi
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Tidak memiliki izin
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Tidak ditemukan
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: Permintaan tidak valid
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Konflik sumber daya
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnprocessableEntity:
+      description: Validasi gagal
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ValidationError" }
+  schemas:
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        time:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        code: { type: string, example: unauthorized }
+        message: { type: string, example: Token tidak valid }
+        requestId: { type: string }
+
+    ValidationError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+
+    RegisterRequest:
+      type: object
+      required: [fullName, email, password]
+      properties:
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        role:
+          type: string
+          enum: [buyer]
+          default: buyer
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        device:
+          type: string
+          description: Nama perangkat/klien
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token: { type: string }
+        newPassword: { type: string, minLength: 8 }
+
+    AuthTokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        expiresIn:
+          { type: integer, description: Detik sampai kedaluwarsa akses token }
+
+    AuthResponse:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        tokens: { $ref: "#/components/schemas/AuthTokens" }
+
+    Role:
+      type: string
+      enum: [admin, seller, buyer]
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        avatar: { type: string, format: uri, nullable: true }
+        roles:
+          type: array
+          items: { $ref: "#/components/schemas/Role" }
+        status:
+          type: string
+          enum: [active, suspended, pending]
+          default: active
+        emailVerifiedAt: { type: string, format: date-time, nullable: true }
+        twoFactorEnabled: { type: boolean, default: false }
+        preferences:
+          type: object
+          properties:
+            language: { type: string, default: "id" }
+            notifications: { type: boolean, default: true }
+            marketing: { type: boolean, default: false }
+        loyaltyTier:
+          type: string
+          enum: [bronze, silver, gold, platinum]
+          default: bronze
+        totalPoints: { type: integer, default: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        lastActiveAt: { type: string, format: date-time, nullable: true }
+        sellerProfile:
+          $ref: "#/components/schemas/SellerProfile"
+          nullable: true
+
+    PaginatedUsers:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/User" }
+        meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+    AdminUpdateUserRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, suspended]
+        phone:
+          type: string
+        fullName:
+          type: string
+
+    SetRolesRequest:
+      type: object
+      required: [roles]
+      properties:
+        roles:
+          type: array
+          items: { $ref: "#/components/schemas/Role" }
+
+    SellerApplication:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        submittedAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+
+    SellerProfile:
+      type: object
+      properties:
+        sellerId: { type: string, format: uuid }
+        displayName: { type: string }
+        bio: { type: string, nullable: true, maxLength: 500 }
+        rating: { type: number, minimum: 0, maximum: 5, multipleOf: 0.1 }
+        totalReviews: { type: integer }
+        verified: { type: boolean, default: false }
+
+    UpdateSellerProfileRequest:
+      type: object
+      properties:
+        displayName: { type: string }
+        bio: { type: string, maxLength: 500 }
+
+    Store:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string, nullable: true }
+        logoUrl: { type: string, format: uri, nullable: true }
+        address: { $ref: "#/components/schemas/Address" }
+        geo:
+          type: object
+          description: Koordinat sekitar Bundaran Kantor Gubernur (opsional).
+          properties:
+            lat: { type: number, example: -3.9823 }
+            lng: { type: number, example: 122.5146 }
+        status:
+          type: string
+          enum: [active, inactive]
+          default: active
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateStoreRequest:
+      type: object
+      required: [name, address]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        address: { $ref: "#/components/schemas/AddressCreateRequest" }
+        geo:
+          type: object
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+
+    UpdateStoreRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        logoUrl: { type: string, format: uri, nullable: true }
+        status:
+          type: string
+          enum: [active, inactive]
+
+    Category:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        parentId: { type: string, format: uuid, nullable: true }
+
+    CreateCategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        parentId: { type: string, format: uuid, nullable: true }
+
+    UpdateCategoryRequest:
+      type: object
+      properties:
+        name: { type: string }
+        parentId: { type: string, format: uuid, nullable: true }
+
+    Money:
+      type: object
+      properties:
+        amount: { type: number, minimum: 0 }
+        currency: { type: string, example: IDR }
+
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        storeId: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        categoryId: { type: string, format: uuid }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              url: { type: string, format: uri }
+              isPrimary: { type: boolean, default: false }
+        price: { $ref: "#/components/schemas/Money" }
+        discount:
+          type: object
+          nullable: true
+          properties:
+            type: { type: string, enum: [percent, amount] }
+            value: { type: number, minimum: 0 }
+            startAt: { type: string, format: date-time, nullable: true }
+            endAt: { type: string, format: date-time, nullable: true }
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/Variant"
+        stock: { type: integer, minimum: 0 }
+        rating: { type: number, minimum: 0, maximum: 5, multipleOf: 0.1 }
+        totalReviews: { type: integer }
+        status:
+          type: string
+          enum: [active, inactive, draft]
+          default: active
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Variant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string }
+        name: { type: string, example: "Ukuran M / Warna Merah" }
+        additionalPrice: { type: number, default: 0 }
+        stock: { type: integer, minimum: 0 }
+
+    CreateProductRequest:
+      type: object
+      required: [name, categoryId, price]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        categoryId: { type: string, format: uuid }
+        price: { $ref: "#/components/schemas/Money" }
+        discount:
+          $ref: "#/components/schemas/Product/properties/discount"
+        variants:
+          type: array
+          items: { $ref: "#/components/schemas/Variant" }
+        stock: { type: integer, minimum: 0, default: 0 }
+        status:
+          type: string
+          enum: [active, inactive, draft]
+          default: draft
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        categoryId: { type: string, format: uuid }
+        price: { $ref: "#/components/schemas/Money" }
+        discount:
+          $ref: "#/components/schemas/Product/properties/discount"
+        status:
+          type: string
+          enum: [active, inactive, draft]
+
+    UpdateInventoryRequest:
+      type: object
+      properties:
+        stockDelta:
+          { type: integer, description: Penyesuaian stok total relatif }
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              stockDelta: { type: integer }
+              sku: { type: string }
+              additionalPrice: { type: number }
+
+    UploadResult:
+      type: object
+      properties:
+        image:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            url: { type: string, format: uri }
+        presigned:
+          type: object
+          nullable: true
+          properties:
+            url: { type: string, format: uri }
+            fields:
+              type: object
+              additionalProperties: { type: string }
+
+    CartItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        variantId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        price: { $ref: "#/components/schemas/Money" }
+        quantity: { type: integer, minimum: 1 }
+        subtotal: { $ref: "#/components/schemas/Money" }
+
+    Cart:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CartItem" }
+        totalItems: { type: integer }
+        subtotal: { $ref: "#/components/schemas/Money" }
+        discountTotal: { $ref: "#/components/schemas/Money" }
+        shippingFee: { $ref: "#/components/schemas/Money" }
+        total: { $ref: "#/components/schemas/Money" }
+        currency: { type: string, example: IDR }
+
+    CartUpdateRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId: { type: string, format: uuid }
+              variantId: { type: string, format: uuid, nullable: true }
+              quantity: { type: integer, minimum: 1 }
+
+    AddCartItemRequest:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: string, format: uuid }
+        variantId: { type: string, format: uuid, nullable: true }
+        quantity: { type: integer, minimum: 1 }
+
+    UpdateCartItemRequest:
+      type: object
+      properties:
+        variantId: { type: string, format: uuid, nullable: true }
+        quantity: { type: integer, minimum: 1 }
+
+    Address:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string, example: "Rumah" }
+        recipient: { type: string }
+        phone: { type: string }
+        line1: { type: string }
+        line2: { type: string, nullable: true }
+        district: { type: string, example: "Kendari Barat" }
+        city: { type: string, example: "Kendari" }
+        province: { type: string, example: "Sulawesi Tenggara" }
+        postalCode: { type: string, example: "93121" }
+        country: { type: string, example: "ID" }
+        isDefault: { type: boolean, default: false }
+        geo:
+          type: object
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+
+    AddressCreateRequest:
+      type: object
+      required:
+        [label, recipient, phone, line1, city, province, postalCode, country]
+      properties:
+        label: { type: string }
+        recipient: { type: string }
+        phone: { type: string }
+        line1: { type: string }
+        line2: { type: string, nullable: true }
+        district: { type: string, nullable: true }
+        city: { type: string }
+        province: { type: string }
+        postalCode: { type: string }
+        country: { type: string, example: "ID" }
+        isDefault: { type: boolean, default: false }
+        geo:
+          type: object
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+
+    AddressUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/AddressCreateRequest"
+
+    CheckoutRequest:
+      type: object
+      properties:
+        addressId: { type: string, format: uuid }
+        shippingMethod:
+          type: string
+          example: "kurir_reguler"
+        note: { type: string, maxLength: 300 }
+
+    PaymentMethod:
+      type: string
+      enum: [qris, va_bca, va_bri, va_bni, bank_transfer, cod]
+
+    PaymentIntentRequest:
+      type: object
+      required: [orderId, method]
+      properties:
+        orderId: { type: string, format: uuid }
+        method: { $ref: "#/components/schemas/PaymentMethod" }
+        returnUrl: { type: string, format: uri, nullable: true }
+        callbackUrl: { type: string, format: uri, nullable: true }
+
+    PaymentIntent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        method: { $ref: "#/components/schemas/PaymentMethod" }
+        status:
+          type: string
+          enum: [pending, paid, failed, expired]
+        amount: { $ref: "#/components/schemas/Money" }
+        payload:
+          type: object
+          description: Data spesifik metode (mis. QR string, VA number).
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+
+    OrderStatus:
+      type: string
+      enum:
+        [pending_payment, processing, shipped, delivered, canceled, refunded]
+
+    Shipment:
+      type: object
+      properties:
+        courier: { type: string, example: "JNE" }
+        service: { type: string, example: "REG" }
+        trackingNumber: { type: string, example: "JNE123456789" }
+        shippedAt: { type: string, format: date-time, nullable: true }
+        deliveredAt: { type: string, format: date-time, nullable: true }
+        fee: { $ref: "#/components/schemas/Money" }
+
+    OrderItem:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        name: { type: string }
+        variantName: { type: string, nullable: true }
+        price: { $ref: "#/components/schemas/Money" }
+        quantity: { type: integer }
+        subtotal: { $ref: "#/components/schemas/Money" }
+
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        buyerId: { type: string, format: uuid }
+        storeId: { type: string, format: uuid }
+        number: { type: string, example: "INV-2025-000123" }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+        subtotal: { $ref: "#/components/schemas/Money" }
+        discountTotal: { $ref: "#/components/schemas/Money" }
+        shipping: { $ref: "#/components/schemas/Shipment" }
+        total: { $ref: "#/components/schemas/Money" }
+        payment:
+          type: object
+          properties:
+            method: { $ref: "#/components/schemas/PaymentMethod" }
+            status:
+              type: string
+              enum: [pending, paid, failed, refunded]
+            paidAt: { type: string, format: date-time, nullable: true }
+        address: { $ref: "#/components/schemas/Address" }
+        note: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PaginatedOrders:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Order" }
+        meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+    PaginatedProducts:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+    FulfillOrderRequest:
+      type: object
+      properties:
+        courier: { type: string }
+        service: { type: string }
+        trackingNumber: { type: string }
+        shippedAt: { type: string, format: date-time }
+
+    OrderActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [cancel, confirm_delivery, request_refund]
+        reason: { type: string, nullable: true }
+
+    Review:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 1000 }
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+        createdAt: { type: string, format: date-time }
+        author:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+
+    CreateReviewRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 1000 }
+        images:
+          type: array
+          items: { type: string, format: uri }
+
+    PaginatedReviews:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Review" }
+        meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: "order.updated" }
+        title: { type: string }
+        body: { type: string }
+        data:
+          type: object
+          additionalProperties: true
+        read: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    PaginatedNotifications:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+        meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+    AdminMetrics:
+      type: object
+      properties:
+        totalUsers: { type: integer }
+        totalSellers: { type: integer }
+        totalOrders: { type: integer }
+        gmV: { $ref: "#/components/schemas/Money" }
+        topCategories:
+          type: array
+          items:
+            type: object
+            properties:
+              category: { type: string }
+              revenue: { $ref: "#/components/schemas/Money" }
+
+    SellerMetrics:
+      type: object
+      properties:
+        storeId: { type: string, format: uuid }
+        orders:
+          type: object
+          properties:
+            count: { type: integer }
+            revenue: { $ref: "#/components/schemas/Money" }
+        products:
+          type: object
+          properties:
+            total: { type: integer }
+            lowStock: { type: integer }
+        rating:
+          type: object
+          properties:
+            avg: { type: number }
+            count: { type: integer }
+
+    PaymentWebhook:
+      type: object
+      properties:
+        event: { type: string, example: "payment.status.updated" }
+        signature: { type: string }
+        data:
+          type: object
+          properties:
+            intentId: { type: string, format: uuid }
+            orderId: { type: string, format: uuid }
+            status:
+              type: string
+              enum: [pending, paid, failed, expired]
+            paidAt: { type: string, format: date-time, nullable: true }
+            amount: { $ref: "#/components/schemas/Money" }
+
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+        total_pages: { type: integer }
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        fullName: { type: string }
+        phone: { type: string }
+
+    # === NEW SCHEMAS FOR ENHANCED FEATURES ===
+
+    UserSession:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        deviceName: { type: string }
+        ipAddress: { type: string }
+        userAgent: { type: string }
+        location: { type: string, nullable: true }
+        lastActiveAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        isCurrent: { type: boolean }
+
+    UserSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string }
+        avatar: { type: string, format: uri, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Conversation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        participants:
+          type: array
+          items: { $ref: "#/components/schemas/UserSummary" }
+        lastMessage: { $ref: "#/components/schemas/Message" }
+        unreadCount: { type: integer }
+        productId: { type: string, format: uuid, nullable: true }
+        product: { $ref: "#/components/schemas/Product", nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Message:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        content: { type: string }
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              url: { type: string, format: uri }
+              type: { type: string, enum: [image, document] }
+              filename: { type: string }
+        readAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Coupon:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        type: { type: string, enum: [percentage, fixed_amount, free_shipping] }
+        value: { type: number, minimum: 0 }
+        minOrderAmount: { $ref: "#/components/schemas/Money", nullable: true }
+        maxDiscountAmount:
+          { $ref: "#/components/schemas/Money", nullable: true }
+        usageLimit: { type: integer, nullable: true }
+        usageCount: { type: integer, default: 0 }
+        userUsageLimit: { type: integer, nullable: true }
+        storeId: { type: string, format: uuid, nullable: true }
+        applicableCategories:
+          type: array
+          items: { type: string, format: uuid }
+        applicableProducts:
+          type: array
+          items: { type: string, format: uuid }
+        status: { type: string, enum: [active, inactive, expired] }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    CreateCouponRequest:
+      type: object
+      required: [code, name, type, value, startsAt]
+      properties:
+        code: { type: string, maxLength: 20 }
+        name: { type: string, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+        type: { type: string, enum: [percentage, fixed_amount, free_shipping] }
+        value: { type: number, minimum: 0 }
+        minOrderAmount: { $ref: "#/components/schemas/Money" }
+        maxDiscountAmount: { $ref: "#/components/schemas/Money" }
+        usageLimit: { type: integer, minimum: 1 }
+        userUsageLimit: { type: integer, minimum: 1 }
+        applicableCategories:
+          type: array
+          items: { type: string, format: uuid }
+        applicableProducts:
+          type: array
+          items: { type: string, format: uuid }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+
+    UpdateCouponRequest:
+      type: object
+      properties:
+        name: { type: string, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+        status: { type: string, enum: [active, inactive] }
+        expiresAt: { type: string, format: date-time }
+
+    PointTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [earned, redeemed, expired, adjustment] }
+        points: { type: integer }
+        description: { type: string }
+        orderId: { type: string, format: uuid, nullable: true }
+        couponId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, nullable: true }
+
+    MoneyRange:
+      type: object
+      properties:
+        min: { $ref: "#/components/schemas/Money" }
+        max: { $ref: "#/components/schemas/Money" }
+
+    ProductQuestion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        question: { type: string }
+        answer: { type: string, nullable: true }
+        asker: { $ref: "#/components/schemas/UserSummary" }
+        answeredBy: { $ref: "#/components/schemas/UserSummary", nullable: true }
+        askedAt: { type: string, format: date-time }
+        answeredAt: { type: string, format: date-time, nullable: true }
+        helpful: { type: integer, default: 0 }
+
+    Dispute:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        type:
+          {
+            type: string,
+            enum: [product_issue, delivery_issue, service_issue, payment_issue],
+          }
+        status: { type: string, enum: [open, in_progress, resolved, closed] }
+        title: { type: string }
+        description: { type: string }
+        priority: { type: string, enum: [low, medium, high, urgent] }
+        reporter: { $ref: "#/components/schemas/UserSummary" }
+        assignedTo: { $ref: "#/components/schemas/UserSummary", nullable: true }
+        resolution: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+
+    CreateDisputeRequest:
+      type: object
+      required: [type, title, description]
+      properties:
+        type:
+          {
+            type: string,
+            enum: [product_issue, delivery_issue, service_issue, payment_issue],
+          }
+        title: { type: string, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+        priority:
+          { type: string, enum: [low, medium, high, urgent], default: medium }
+        attachments:
+          type: array
+          items: { type: string, format: uri }
+
+    DisputeMessage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        disputeId: { type: string, format: uuid }
+        sender: { $ref: "#/components/schemas/UserSummary" }
+        message: { type: string }
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string, format: uri }
+              filename: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Return:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productId: { type: string, format: uuid }
+              quantity: { type: integer }
+              reason: { type: string }
+        reason:
+          {
+            type: string,
+            enum:
+              [defective, wrong_item, not_as_described, changed_mind, damaged],
+          }
+        description: { type: string }
+        status:
+          {
+            type: string,
+            enum: [pending, approved, rejected, completed, cancelled],
+          }
+        refundAmount: { $ref: "#/components/schemas/Money" }
+        returnShipping:
+          type: object
+          properties:
+            trackingNumber: { type: string, nullable: true }
+            courier: { type: string, nullable: true }
+        images:
+          type: array
+          items: { type: string, format: uri }
+        requestedAt: { type: string, format: date-time }
+        processedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+
+    CreateReturnRequest:
+      type: object
+      required: [reason, items]
+      properties:
+        reason:
+          {
+            type: string,
+            enum:
+              [defective, wrong_item, not_as_described, changed_mind, damaged],
+          }
+        description: { type: string, maxLength: 1000 }
+        items:
+          type: array
+          items:
+            type: object
+            required: [productId, quantity, reason]
+            properties:
+              productId: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1 }
+              reason: { type: string, maxLength: 200 }
+        images:
+          type: array
+          items: { type: string, format: uri }
+
+    SalesAnalytics:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        totals:
+          type: object
+          properties:
+            revenue: { $ref: "#/components/schemas/Money" }
+            orders: { type: integer }
+            customers: { type: integer }
+            avgOrderValue: { $ref: "#/components/schemas/Money" }
+        trends:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              revenue: { $ref: "#/components/schemas/Money" }
+              orders: { type: integer }
+        topProducts:
+          type: array
+          items:
+            type: object
+            properties:
+              product: { $ref: "#/components/schemas/Product" }
+              quantity: { type: integer }
+              revenue: { $ref: "#/components/schemas/Money" }
+        categoryBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              category: { $ref: "#/components/schemas/Category" }
+              percentage: { type: number }
+              revenue: { $ref: "#/components/schemas/Money" }
+
+    InventoryAnalytics:
+      type: object
+      properties:
+        totalProducts: { type: integer }
+        totalStock: { type: integer }
+        totalValue: { $ref: "#/components/schemas/Money" }
+        lowStockProducts:
+          type: array
+          items:
+            type: object
+            properties:
+              product: { $ref: "#/components/schemas/Product" }
+              currentStock: { type: integer }
+              threshold: { type: integer }
+        outOfStockProducts:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        fastMovingProducts:
+          type: array
+          items:
+            type: object
+            properties:
+              product: { $ref: "#/components/schemas/Product" }
+              salesVelocity: { type: number }
+        slowMovingProducts:
+          type: array
+          items:
+            type: object
+            properties:
+              product: { $ref: "#/components/schemas/Product" }
+              daysSinceLastSale: { type: integer }
+
+    SalesReport:
+      type: object
+      properties:
+        reportType: { type: string }
+        period:
+          type: object
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        summary:
+          type: object
+          properties:
+            totalRevenue: { $ref: "#/components/schemas/Money" }
+            totalOrders: { type: integer }
+            totalItems: { type: integer }
+            avgOrderValue: { $ref: "#/components/schemas/Money" }
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              orders: { type: integer }
+              revenue: { $ref: "#/components/schemas/Money" }
+              items: { type: integer }
+
+    UploadUrl:
+      type: object
+      properties:
+        uploadUrl: { type: string, format: uri }
+        publicUrl: { type: string, format: uri }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+        expiresAt: { type: string, format: date-time }
+
+    DeliveryZone:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        storeId: { type: string, format: uuid }
+        name: { type: string }
+        coverage:
+          type: array
+          items:
+            type: object
+            properties:
+              city: { type: string }
+              districts:
+                type: array
+                items: { type: string }
+              postalCodes:
+                type: array
+                items: { type: string }
+        shippingCost: { $ref: "#/components/schemas/Money" }
+        freeShippingMinOrder:
+          { $ref: "#/components/schemas/Money", nullable: true }
+        estimatedDays:
+          type: object
+          properties:
+            min: { type: integer }
+            max: { type: integer }
+        isActive: { type: boolean, default: true }
+        createdAt: { type: string, format: date-time }
+
+    CreateDeliveryZoneRequest:
+      type: object
+      required: [name, coverage, shippingCost]
+      properties:
+        name: { type: string, maxLength: 100 }
+        coverage:
+          type: array
+          items:
+            type: object
+            required: [city]
+            properties:
+              city: { type: string }
+              districts:
+                type: array
+                items: { type: string }
+              postalCodes:
+                type: array
+                items: { type: string }
+        shippingCost: { $ref: "#/components/schemas/Money" }
+        freeShippingMinOrder: { $ref: "#/components/schemas/Money" }
+        estimatedDays:
+          type: object
+          properties:
+            min: { type: integer, minimum: 1 }
+            max: { type: integer, minimum: 1 }
+
+    ShippingOption:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        courier: { type: string }
+        service: { type: string }
+        cost: { $ref: "#/components/schemas/Money" }
+        estimatedDays:
+          type: object
+          properties:
+            min: { type: integer }
+            max: { type: integer }
+        description: { type: string }
+        features:
+          type: array
+          items:
+            type: string
+          example: ["insurance", "tracking", "same_day"]
+
+x-roles:
+  description: >
+    Ekstensi khusus untuk menunjukkan peran yang diizinkan mengakses endpoint tertentu.
+x-idempotency:
+  description: >
+    Gunakan header Idempotency-Key untuk operasi POST yang sensitif (checkout, pembayaran).

@@ -1,0 +1,501 @@
+erDiagram
+%% User Management
+users {
+uuid id PK
+string full_name
+string email UK
+string password_hash
+string phone
+string avatar_url
+enum status "active,suspended,pending"
+timestamp email_verified_at
+boolean two_factor_enabled
+json preferences
+enum loyalty_tier "bronze,silver,gold,platinum"
+integer total_points
+timestamp created_at
+timestamp updated_at
+timestamp last_active_at
+}
+
+    user_roles {
+        uuid id PK
+        uuid user_id FK
+        enum role "admin,seller,buyer"
+        timestamp created_at
+    }
+
+    user_sessions {
+        uuid id PK
+        uuid user_id FK
+        string device_name
+        string ip_address
+        string user_agent
+        string location
+        timestamp last_active_at
+        timestamp created_at
+        boolean is_current
+    }
+
+    %% Seller & Store Management
+    seller_profiles {
+        uuid id PK
+        uuid user_id FK
+        string display_name
+        text bio
+        decimal rating
+        integer total_reviews
+        boolean verified
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    seller_applications {
+        uuid id PK
+        uuid user_id FK
+        enum status "pending,approved,rejected"
+        timestamp submitted_at
+        timestamp reviewed_at
+        text rejection_reason
+    }
+
+    stores {
+        uuid id PK
+        uuid owner_id FK
+        string name
+        string slug UK
+        text description
+        string logo_url
+        json address
+        decimal geo_lat
+        decimal geo_lng
+        enum status "active,inactive"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    store_followers {
+        uuid id PK
+        uuid store_id FK
+        uuid user_id FK
+        timestamp created_at
+    }
+
+    %% Category Management
+    categories {
+        uuid id PK
+        string name
+        string slug UK
+        uuid parent_id FK
+        integer sort_order
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Product Management
+    products {
+        uuid id PK
+        uuid store_id FK
+        uuid category_id FK
+        string name
+        string slug
+        text description
+        decimal price_amount
+        string price_currency
+        json discount
+        integer stock
+        decimal rating
+        integer total_reviews
+        enum status "active,inactive,draft"
+        json metadata
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    product_images {
+        uuid id PK
+        uuid product_id FK
+        string url
+        boolean is_primary
+        integer sort_order
+        timestamp created_at
+    }
+
+    product_variants {
+        uuid id PK
+        uuid product_id FK
+        string sku UK
+        string name
+        decimal additional_price
+        integer stock
+        json attributes
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    product_questions {
+        uuid id PK
+        uuid product_id FK
+        uuid asker_id FK
+        uuid answered_by_id FK
+        text question
+        text answer
+        timestamp asked_at
+        timestamp answered_at
+        integer helpful_count
+    }
+
+    %% Shopping Cart & Wishlist
+    carts {
+        uuid id PK
+        uuid user_id FK
+        decimal subtotal_amount
+        string subtotal_currency
+        decimal discount_amount
+        decimal shipping_amount
+        decimal total_amount
+        string total_currency
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    cart_items {
+        uuid id PK
+        uuid cart_id FK
+        uuid product_id FK
+        uuid variant_id FK
+        integer quantity
+        decimal price_amount
+        string price_currency
+        decimal subtotal_amount
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    wishlists {
+        uuid id PK
+        uuid user_id FK
+        uuid product_id FK
+        timestamp created_at
+    }
+
+    %% Address Management
+    addresses {
+        uuid id PK
+        uuid user_id FK
+        string label
+        string recipient
+        string phone
+        string line1
+        string line2
+        string district
+        string city
+        string province
+        string postal_code
+        string country
+        boolean is_default
+        decimal geo_lat
+        decimal geo_lng
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Delivery & Shipping
+    delivery_zones {
+        uuid id PK
+        uuid store_id FK
+        string name
+        json coverage
+        decimal shipping_cost_amount
+        string shipping_cost_currency
+        decimal free_shipping_min_amount
+        integer estimated_days_min
+        integer estimated_days_max
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Order Management
+    orders {
+        uuid id PK
+        uuid buyer_id FK
+        uuid store_id FK
+        string order_number UK
+        enum status "pending_payment,processing,shipped,delivered,canceled,refunded"
+        decimal subtotal_amount
+        string subtotal_currency
+        decimal discount_amount
+        decimal shipping_amount
+        decimal total_amount
+        string total_currency
+        uuid shipping_address_id FK
+        text note
+        json payment_info
+        json shipping_info
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    order_items {
+        uuid id PK
+        uuid order_id FK
+        uuid product_id FK
+        uuid variant_id FK
+        string product_name
+        string variant_name
+        decimal price_amount
+        string price_currency
+        integer quantity
+        decimal subtotal_amount
+        timestamp created_at
+    }
+
+    %% Payment Management
+    payment_intents {
+        uuid id PK
+        uuid order_id FK
+        enum method "qris,va_bca,va_bri,va_bni,bank_transfer,cod"
+        enum status "pending,paid,failed,expired"
+        decimal amount
+        string currency
+        json payload
+        string return_url
+        string callback_url
+        timestamp created_at
+        timestamp expires_at
+        timestamp paid_at
+    }
+
+    %% Reviews & Ratings
+    reviews {
+        uuid id PK
+        uuid product_id FK
+        uuid order_id FK
+        uuid user_id FK
+        integer rating
+        text comment
+        json images
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Notifications
+    notifications {
+        uuid id PK
+        uuid user_id FK
+        string type
+        string title
+        text body
+        json data
+        boolean is_read
+        timestamp created_at
+        timestamp read_at
+    }
+
+    %% Communication
+    conversations {
+        uuid id PK
+        uuid product_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    conversation_participants {
+        uuid id PK
+        uuid conversation_id FK
+        uuid user_id FK
+        timestamp joined_at
+        timestamp last_read_at
+    }
+
+    messages {
+        uuid id PK
+        uuid conversation_id FK
+        uuid sender_id FK
+        text content
+        json attachments
+        timestamp created_at
+        timestamp read_at
+    }
+
+    %% Promotions & Coupons
+    coupons {
+        uuid id PK
+        uuid store_id FK
+        string code UK
+        string name
+        text description
+        enum type "percentage,fixed_amount,free_shipping"
+        decimal value
+        decimal min_order_amount
+        decimal max_discount_amount
+        integer usage_limit
+        integer usage_count
+        integer user_usage_limit
+        json applicable_categories
+        json applicable_products
+        enum status "active,inactive,expired"
+        timestamp starts_at
+        timestamp expires_at
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    coupon_usages {
+        uuid id PK
+        uuid coupon_id FK
+        uuid user_id FK
+        uuid order_id FK
+        decimal discount_amount
+        timestamp used_at
+    }
+
+    %% Loyalty Program
+    point_transactions {
+        uuid id PK
+        uuid user_id FK
+        enum type "earned,redeemed,expired,adjustment"
+        integer points
+        string description
+        uuid order_id FK
+        uuid coupon_id FK
+        timestamp created_at
+        timestamp expires_at
+    }
+
+    %% Dispute & Return Management
+    disputes {
+        uuid id PK
+        uuid order_id FK
+        uuid reporter_id FK
+        uuid assigned_to_id FK
+        enum type "product_issue,delivery_issue,service_issue,payment_issue"
+        enum status "open,in_progress,resolved,closed"
+        string title
+        text description
+        enum priority "low,medium,high,urgent"
+        text resolution
+        timestamp created_at
+        timestamp updated_at
+        timestamp resolved_at
+    }
+
+    dispute_messages {
+        uuid id PK
+        uuid dispute_id FK
+        uuid sender_id FK
+        text message
+        json attachments
+        timestamp created_at
+    }
+
+    returns {
+        uuid id PK
+        uuid order_id FK
+        uuid user_id FK
+        json items
+        enum reason "defective,wrong_item,not_as_described,changed_mind,damaged"
+        text description
+        enum status "pending,approved,rejected,completed,cancelled"
+        decimal refund_amount
+        string refund_currency
+        json return_shipping
+        json images
+        timestamp requested_at
+        timestamp processed_at
+        timestamp completed_at
+    }
+
+    %% Media & File Management
+    media_files {
+        uuid id PK
+        uuid uploaded_by FK
+        string filename
+        string original_filename
+        string content_type
+        integer file_size
+        string storage_path
+        enum purpose "product_image,store_logo,user_avatar,message_attachment,document"
+        json metadata
+        timestamp created_at
+        timestamp deleted_at
+    }
+
+    %% System & Analytics
+    system_metrics {
+        uuid id PK
+        string metric_name
+        json metric_data
+        timestamp recorded_at
+    }
+
+    user_activities {
+        uuid id PK
+        uuid user_id FK
+        string activity_type
+        json activity_data
+        timestamp created_at
+    }
+
+    %% Relationships
+    users ||--o{ user_roles : "has"
+    users ||--o{ user_sessions : "has"
+    users ||--o| seller_profiles : "has"
+    users ||--o{ seller_applications : "submits"
+    users ||--o{ addresses : "owns"
+    users ||--o{ carts : "has"
+    users ||--o{ wishlists : "has"
+    users ||--o{ orders : "places"
+    users ||--o{ reviews : "writes"
+    users ||--o{ notifications : "receives"
+    users ||--o{ point_transactions : "earns"
+    users ||--o{ store_followers : "follows"
+    users ||--o{ conversation_participants : "participates"
+    users ||--o{ messages : "sends"
+    users ||--o{ disputes : "reports"
+    users ||--o{ returns : "requests"
+    users ||--o{ media_files : "uploads"
+    users ||--o{ user_activities : "performs"
+
+    seller_profiles ||--o{ stores : "owns"
+    stores ||--o{ products : "contains"
+    stores ||--o{ delivery_zones : "covers"
+    stores ||--o{ orders : "receives"
+    stores ||--o{ coupons : "offers"
+    stores ||--o{ store_followers : "followed_by"
+
+    categories ||--o{ categories : "parent"
+    categories ||--o{ products : "categorizes"
+
+    products ||--o{ product_images : "has"
+    products ||--o{ product_variants : "has"
+    products ||--o{ product_questions : "receives"
+    products ||--o{ cart_items : "added_to"
+    products ||--o{ wishlists : "added_to"
+    products ||--o{ order_items : "ordered_as"
+    products ||--o{ reviews : "reviewed_in"
+    products ||--o{ conversations : "discussed_in"
+
+    carts ||--o{ cart_items : "contains"
+    product_variants ||--o{ cart_items : "selected_as"
+    product_variants ||--o{ order_items : "ordered_as"
+
+    addresses ||--o{ orders : "shipped_to"
+
+    orders ||--o{ order_items : "contains"
+    orders ||--o{ payment_intents : "paid_with"
+    orders ||--o{ disputes : "disputed_in"
+    orders ||--o{ returns : "returned_from"
+
+    conversations ||--o{ conversation_participants : "includes"
+    conversations ||--o{ messages : "contains"
+
+    coupons ||--o{ coupon_usages : "used_in"
+    orders ||--o{ coupon_usages : "applies"
+
+    disputes ||--o{ dispute_messages : "discussed_in"
+
+    point_transactions }o--|| orders : "earned_from"
+    point_transactions }o--|| coupons : "redeemed_for"
